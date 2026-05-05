@@ -1,0 +1,79 @@
+import pandas as pd
+import numpy as np
+import re
+from scipy.linalg import eig
+
+file_path = "/Users/hyeonjoys/Downloads/ahp1.xlsx"  # 최신 33명 데이터가 덮어씌워진 파일
+
+df = pd.read_excel(file_path, sheet_name='Sheet1', skiprows=1)
+df = df.iloc[1:].reset_index(drop=True)
+
+
+def parse_ahp(result_str):
+    if type(result_str) != str or '결측치' in result_str:
+        return None
+    matches = re.findall(r'([A-C])(\d+)', result_str.replace(' ', ''))
+    if len(matches) != 3:
+        return None
+
+    pairs = [('A', 'B'), ('B', 'C'), ('A', 'C')]
+    matrix = np.ones((3, 3))
+
+    for idx, match in enumerate(matches):
+        letter, val = match
+        val = float(val)
+        pair = pairs[idx]
+
+        if letter == pair[0]:
+            ratio = val
+        elif letter == pair[1]:
+            ratio = 1 / val if val != 0 else 1
+        else:
+            return None
+
+        row = ord(pair[0]) - ord('A')
+        col = ord(pair[1]) - ord('A')
+        matrix[row, col] = ratio
+        matrix[col, row] = 1 / ratio
+
+    return matrix
+
+
+valid_matrices = []
+cr_failed = 0
+
+for idx, row in df.iterrows():
+    mat = parse_ahp(row.iloc[4])
+    if mat is not None:
+        vals, vecs = eig(mat)
+        max_idx = np.argmax(np.real(vals))
+        max_val = np.real(vals[max_idx])
+
+        # 개별 유저의 논리적 모순율(CR) 검사
+        CR = ((max_val - 3) / 2) / 0.58
+
+        # CR이 10%(0.1) 이하인 완벽한 논리 응답자만 필터링!
+        if CR <= 0.1:
+            valid_matrices.append(mat)
+        else:
+            cr_failed += 1
+
+print(f"✅ 총 응답자 중 포맷 통과: {len(valid_matrices) + cr_failed}명")
+print(f"❌ 논리적 모순(CR 초과)으로 탈락: {cr_failed}명")
+print(f"🏆 최종 정제된 최정예 데이터: {len(valid_matrices)}명\n")
+
+# 최정예 데이터 23명 기하평균 통합
+matrices = np.array(valid_matrices)
+geom_mean_matrix = np.exp(np.mean(np.log(matrices), axis=0))
+
+eigenvalues, eigenvectors = eig(geom_mean_matrix)
+max_eigen_idx = np.argmax(np.real(eigenvalues))
+principal_eigenvector = np.real(eigenvectors[:, max_eigen_idx])
+
+final_weights = principal_eigenvector / np.sum(principal_eigenvector)
+
+print("========== [최종 알고리즘 가중치] ==========")
+print(f"[α] 당장의 기쁨: {final_weights[0] * 100:.1f}%")
+print(f"[β] 재정적 고통: {final_weights[1] * 100:.1f}%")
+print(f"[γ] 내일의 후회: {final_weights[2] * 100:.1f}%")
+print("============================================")

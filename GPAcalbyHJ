@@ -1,0 +1,529 @@
+# === [ 1. 라이브러리 임포트 ] ===
+import streamlit as st  # Streamlit 라이브러리 (별명 st)
+import pandas as pd
+import os
+import json
+
+# 're'는 더 이상 필요 없으므로 삭제
+
+# === [ 2. 전역 상수 및 설정 ] ===
+# 기존 portfolio_manager_annotated.py의 모든 상수/딕셔너리를 그대로 가져옵니다.
+
+GRADE_FILE = 'grades.csv'
+SPEC_FILE = 'specs.csv'
+CONFIG_FILE = 'config.json'
+
+# GTM 전공 트랙별 과목
+TRACK_COURSES = {
+    "마케팅": [
+        "Management and Entrepreneurship", "Statistics for Business",
+        "Analysis and Understanding of Business Data", "Marketing Management",
+        "서비스마케팅", "기술마케팅", "소비자행동", "Behavioral Decision-Making",
+        "마케팅애널틱", "신제품개발"
+    ],
+    "데이터분석": [
+        "Introduction to Information Technology and Programming", "정보 기술과 경영",
+        "지식재산및기술활용전략", "기술경영개론", "파이썬입문", "Operations Management",
+        "오퍼레이션전략", "머신러닝입문", "비즈니스인텔리전스", "자료프로그래밍",
+        "모바일프로그래밍", "프로젝트기획관리", "Supply Chain Management", "서비스프로세스혁신",
+        "Analysis and Understanding of Business Data",
+        "Statistics for Business",
+        "마케팅애널틱"
+    ],
+    "핀테크": [
+        "Principles of Accounting", "회계원리", "Principles of Economics(Micro)", "Principles of Economics(Macro)",
+        "경제학원론(거시)", "Introduction to International Economics", "국제무역의이해",
+        "Trends Management", "핀테크", "Cost & Management Accounting", "원가관리회계",
+        "Corporate Value Analysis", "기업가치분석", "Risk Management", "위험관리론",
+        "핀테크매니지먼트", "Investments", "투자론", "Derivative Securities", "파생상품론",
+        "금융시장과경영", "경영경제특강", "금융경제특강", "Machine Learning과 금융", "응용기계학습"
+    ]
+}
+
+# 공통기초필수 과목
+COMMON_FOUNDATIONAL_COURSES = {
+    "창의": ["창의적사고"],
+    "인성": ["삶의윤리학", "인간과공동체"],
+    "글쓰기와 논리": ["글쓰기와의사소통", "논리적글쓰기", "논리와사고"],
+    "국제화역량": ["실용영어의사소통", "고급실용영어의사소통", "실용영어회화(1)", "고급실용영어회화(1)"],
+    "취업역량": ["취창업진로설계"]
+}
+
+# 영역별 1선택 필수교양
+AREA_ELECTIVE_COURSES = {
+    "1영역 (사상과 문화)": ["현대사회와윤리", "현대사회와철학", "현대문화론", "생명과인간", "문학적상상력"],
+    "2영역 (역사와 문명)": ["역사와인간", "한국사의재조명", "동서문명의교류", "현대예술의이해", "과학기술과문명"],
+    "3영역 (인간과 사회)": ["현대메가트렌드", "사회의이해", "정치의이해", "경제의이해", "과학기술과사회"]
+}
+
+# 성적 변환 딕셔너리
+GRADE_MAP = {
+    'A+': 4.5, 'A0': 4.0, 'B+': 3.5, 'B0': 3.0,
+    'C+': 2.5, 'C0': 2.0, 'D+': 1.5, 'D0': 1.0, 'F': 0.0,
+    'P': 0.0, 'NP': 0.0
+}
+USER_NAME = "신현종"  # 사용자 이름 설정
+
+
+# === [ 3. 데이터 로드/저장 함수 ] ===
+# 기존 로직과 동일 (print() 대신 Streamlit 알림을 사용하도록 수정 가능)
+
+def load_dataframe(filename, columns):
+    if os.path.exists(filename):
+        try:
+            return pd.read_csv(filename)
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame(columns=columns)
+        except Exception as e:
+            st.error(f"'{filename}' 로드 중 오류 발생: {e}")
+            return pd.DataFrame(columns=columns)
+    else:
+        return pd.DataFrame(columns=columns)
+
+
+def save_dataframe(df, filename):
+    try:
+        df.to_csv(filename, index=False)
+        # st.success(f"데이터가 '{filename}'에 저장되었습니다.") # 알림이 너무 자주 떠서 주석 처리
+    except Exception as e:
+        st.error(f"'{filename}' 저장 중 오류 발생: {e}")
+
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        st.warning(f"'{CONFIG_FILE}' 파일이 없어 기본 설정으로 새로 생성합니다.")
+        default_config = {
+            "requirements": {
+                "총학점": 130,
+                "전공학점": 72,
+                "필수과목": [
+                    "Introduction to Information Technology and Programming",
+                    "Principles of Accounting",
+                    "Principles of Economics(Micro)",
+                    "Statistics for Business",
+                    "Analysis and Understanding of Business Data",
+                    "Management and Entrepreneurship",
+                    "파이썬입문"
+                ],
+                "EPIC점수": 700
+            },
+            "current_epic": 0
+        }
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, indent=4, ensure_ascii=False)
+        return default_config["requirements"], default_config["current_epic"]
+
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            if "requirements" not in config_data:
+                config_data["requirements"] = {"총학점": 130, "전공학점": 72, "필수과목": [], "EPIC점수": 700}
+            if "current_epic" not in config_data:
+                config_data["current_epic"] = 0
+
+            if config_data["requirements"].get("EPIC점수", 0) != 700:
+                config_data["requirements"]["EPIC점수"] = 700
+                st.info(f"'{CONFIG_FILE}'의 EPIC 목표 점수를 700점으로 업데이트했습니다.")
+                save_config(config_data["requirements"], config_data["current_epic"])
+
+            return config_data["requirements"], config_data["current_epic"]
+    except Exception as e:
+        st.error(f"'{CONFIG_FILE}' 로드 중 오류 발생: {e}")
+        return {
+            "총학점": 130, "전공학점": 72,
+            "필수과목": [
+                "Introduction to Information Technology and Programming",
+                "Principles of Accounting",
+                "Principles of Economics(Micro)",
+                "Statistics for Business",
+                "Analysis and Understanding of Business Data",
+                "Management and Entrepreneurship",
+                "파이썬입문"
+            ],
+            "EPIC점수": 700
+        }, 0
+
+
+def save_config(reqs, epic):
+    config_data = {
+        "requirements": reqs,
+        "current_epic": epic
+    }
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, indent=4, ensure_ascii=False)
+        # st.success(f"설정이 '{CONFIG_FILE}'에 저장되었습니다.") # 알림이 너무 자주 떠서 주석 처리
+    except Exception as e:
+        st.error(f"'{CONFIG_FILE}' 저장 중 오류 발생: {e}")
+
+
+# === [ 4. 핵심 분석/로직 함수 ] ===
+# CLI 버전의 함수들을 Streamlit에 맞게 수정 (print 제거, 데이터 반환)
+
+def calculate_gpa(df_grades):
+    """(로직 동일) 평점을 계산하고 관련 DataFrame과 값들을 반환합니다."""
+    if df_grades.empty:
+        return pd.DataFrame(), 0.0, 0, pd.DataFrame()
+
+    df_calc = df_grades[
+        (df_grades['성적'] != 'P') & (df_grades['성적'] != 'NP') & (df_grades['학점'] > 0)
+        ].copy()
+
+    total_credits_earned = df_grades[
+        (df_grades['성적'] != 'F') & (df_grades['성적'] != 'NP')
+        ]['학점'].sum()
+
+    if df_calc.empty:
+        retake_subjects = df_grades[
+            (df_grades['성적'].isin(['C+', 'C0', 'D+', 'D0', 'F']))
+        ][['이수시기', '과목명', '성적', '구분']]
+        return retake_subjects, 0.0, total_credits_earned, pd.DataFrame()
+
+    df_calc['점수'] = df_calc['성적'].map(GRADE_MAP)
+    df_calc['총점'] = df_calc['학점'] * df_calc['점수']
+
+    total_gpa = 0.0
+    if df_calc['학점'].sum() > 0:
+        total_gpa = df_calc['총점'].sum() / df_calc['학점'].sum()
+
+    gpa_by_group = pd.DataFrame()
+    if not df_calc.empty:
+        gpa_by_group = df_calc.groupby('구분').agg(
+            총이수학점=('학점', 'sum'),
+            총점합계=('총점', 'sum')
+        )
+        gpa_by_group['평균평점'] = (gpa_by_group['총점합계'] / gpa_by_group['총이수학점']).round(2)
+
+    retake_subjects = df_grades[
+        (df_grades['성적'].isin(['C+', 'C0', 'D+', 'D0', 'F']))
+    ][['이수시기', '과목명', '성적', '구분']]
+
+    return retake_subjects, total_gpa, total_credits_earned, gpa_by_group
+
+
+def analyze_gtm_track(df_grades, selected_track):
+    """(수정) GTM 트랙 분석 결과를 '출력'하는 대신 '반환'합니다."""
+
+    # 1. (A) 트랙 전체 과목
+    try:
+        track_subjects_set = {s.strip().lower() for s in TRACK_COURSES[selected_track]}
+        original_track_subjects_map = {s.strip().lower(): s for s in TRACK_COURSES[selected_track]}
+    except KeyError:
+        return None, None, None, None, None  # 오류 시 None 반환
+
+    # 2. (B) 내가 이수한 과목
+    passed_subjects_map = {
+        row['과목명'].strip().lower(): row['성적']
+        for _, row in df_grades.iterrows()
+        if (row['성적'] != 'F' and row['성적'] != 'NP')
+    }
+    passed_subjects_set = set(passed_subjects_map.keys())
+
+    # 3. 이수한 트랙 과목 (교집합)
+    passed_track_subjects_norm = track_subjects_set.intersection(passed_subjects_set)
+
+    passed_track_list = []
+    for sub_norm in sorted(list(passed_track_subjects_norm)):
+        original_name = original_track_subjects_map[sub_norm]
+        grade = passed_subjects_map[sub_norm]
+        passed_track_list.append(f"{original_name} ( {grade} )")  # 리스트로 반환
+
+    # 4. 트랙 평점 계산
+    df_track_calc = df_grades[
+        (df_grades['과목명'].str.strip().str.lower().isin(passed_track_subjects_norm)) &
+        (df_grades['성적'] != 'P') & (df_grades['성적'] != 'NP') & (df_grades['학점'] > 0)
+        ].copy()
+
+    track_gpa = 0.0
+    track_credits = 0
+    if not df_track_calc.empty:
+        df_track_calc['점수'] = df_track_calc['성적'].map(GRADE_MAP)
+        df_track_calc['총점'] = df_track_calc['학점'] * df_track_calc['점수']
+
+        if df_track_calc['학점'].sum() > 0:
+            track_gpa = df_track_calc['총점'].sum() / df_track_calc['학점'].sum()
+        track_credits = df_track_calc['학점'].sum()
+
+    # 5. 미이수 트랙 과목 (차집합)
+    missing_track_subjects = track_subjects_set - passed_subjects_set
+    missing_track_list = [
+        original_track_subjects_map[sub_norm]
+        for sub_norm in sorted(list(missing_track_subjects))
+    ]
+
+    return passed_track_list, missing_track_list, track_gpa, track_credits, len(track_subjects_set)
+
+
+# === [ 5. Streamlit 앱 초기화 ] ===
+# st.session_state : Streamlit이 페이지 새로고침/상호작용 시 데이터를 기억하게 하는 변수
+
+def initialize_session():
+    """앱이 처음 로드될 때 한 번만 실행되어 데이터를 불러옵니다."""
+    if 'initialized' not in st.session_state:
+        # 컬럼 정의
+        grade_columns = ['과목명', '학점', '성적', '구분', '이수시기']
+        spec_columns = ['분류', '이름', '상세', '시기']
+
+        # 데이터 로드
+        st.session_state.df_grades = load_dataframe(GRADE_FILE, columns=grade_columns)
+        st.session_state.df_specs = load_dataframe(SPEC_FILE, columns=spec_columns)
+        requirements, current_epic = load_config()
+        st.session_state.requirements = requirements
+        st.session_state.current_epic = current_epic
+
+        # 무결성 검사
+        for col in grade_columns:
+            if col not in st.session_state.df_grades.columns:
+                st.session_state.df_grades[col] = pd.NA
+        for col in spec_columns:
+            if col not in st.session_state.df_specs.columns:
+                st.session_state.df_specs[col] = pd.NA
+
+        st.session_state.initialized = True  # 초기화 완료 플래그
+
+
+# === [ 6. Streamlit UI 페이지 렌더링 ] ===
+
+# 페이지 설정 (브라우저 탭 제목, 레이아웃)
+st.set_page_config(page_title=f"{USER_NAME}의 포트폴리오", layout="wide")
+
+# 1. 세션 초기화 (데이터 로드)
+initialize_session()
+
+# --- 사이드바 (Sidebar) ---
+st.sidebar.title(f"🎓 {USER_NAME}님의 포트폴리오")
+
+# 1. 페이지 선택 (라디오 버튼)
+page = st.sidebar.radio(
+    "메뉴 선택",
+    ('종합 대시보드', 'GTM 트랙 분석', '데이터 관리 (수정/삭제)')
+)
+
+# 2. 빠른 데이터 입력 폼
+st.sidebar.header("🚀 빠른 입력")
+with st.sidebar.form("quick_add_form", clear_on_submit=True):
+    st.subheader("1. 새 성적 입력")
+    subject = st.text_input("과목명")
+    # 컬럼 2개로 분할
+    col1, col2 = st.columns(2)
+    with col1:
+        credit = st.number_input("학점", min_value=0, max_value=9, step=1, value=3)
+    with col2:
+        grade = st.selectbox("성적", list(GRADE_MAP.keys()))
+
+    group = st.text_input("이수 구분 (예: 전공, 교양)", value="전공")
+    semester = st.text_input("이수 시기 (예: 2025-1)")
+
+    submit_grade = st.form_submit_button("성적 추가하기")
+
+    if submit_grade:
+        if not subject:
+            st.sidebar.error("과목명은 필수입니다.")
+        else:
+            new_data = pd.DataFrame({
+                '과목명': [subject], '학점': [credit], '성적': [grade],
+                '구분': [group], '이수시기': [semester]
+            })
+            st.session_state.df_grades = pd.concat([st.session_state.df_grades, new_data], ignore_index=True)
+            save_dataframe(st.session_state.df_grades, GRADE_FILE)
+            st.sidebar.success(f"'{subject}' 성적이 추가되었습니다.")
+
+    st.subheader("2. 새 스펙 입력")
+    category = st.text_input("스펙 분류 (예: 자격증, 공모전)")
+    name = st.text_input("스펙 이름 (예: SQLD)")
+    date = st.text_input("취득 시기 (예: 2025-06)")
+    detail = st.text_input("상세 내용 (예: 대상)")
+
+    submit_spec = st.form_submit_button("스펙 추가하기")
+
+    if submit_spec:
+        if not category or not name:
+            st.sidebar.error("분류와 이름은 필수입니다.")
+        else:
+            new_data = pd.DataFrame({
+                '분류': [category], '이름': [name], '상세': [detail], '시기': [date]
+            })
+            st.session_state.df_specs = pd.concat([st.session_state.df_specs, new_data], ignore_index=True)
+            save_dataframe(st.session_state.df_specs, SPEC_FILE)
+            st.sidebar.success(f"'{name}' 스펙이 추가되었습니다.")
+
+# --- 메인 페이지 (선택된 'page'에 따라 다름) ---
+
+if page == '종합 대시보드':
+    st.title("📊 종합 대시보드")
+
+    # 1. 핵심 지표 계산
+    retake, total_gpa, total_credits, gpa_group = calculate_gpa(st.session_state.df_grades)
+    major_credits = gpa_group.loc[gpa_group.index.str.contains("전공", na=False), "총이수학점"].sum()
+
+    # 2. 핵심 지표 (Metrics) - 4개 컬럼
+    st.header("핵심 지표")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("전체 평균 평점", f"{total_gpa:.2f} / 4.5")
+    col2.metric("총 이수 학점", f"{total_credits} / {st.session_state.requirements.get('총학점', 130)}")
+    col3.metric("전공 이수 학점", f"{major_credits} / {st.session_state.requirements.get('전공학점', 72)}")
+    col4.metric("EPIC 점수", f"{st.session_state.current_epic} / {st.session_state.requirements.get('EPIC점수', 700)}")
+
+    st.divider()  # 구분선
+
+    # 3. 졸업 요건 (2개 컬럼 분리)
+    st.header("졸업 요건 체크리스트")
+    req_col1, req_col2 = st.columns(2)
+
+    with req_col1:  # 왼쪽 컬럼
+        st.subheader("전공/교양 필수")
+        passed_subjects_set = set(st.session_state.df_grades[
+                                      (st.session_state.df_grades['성적'] != 'F') &
+                                      (st.session_state.df_grades['성적'] != 'NP')
+                                      ]['과목명'].str.strip().str.lower())
+
+        # 3-1. 전공 필수
+        with st.expander("전공 필수 과목", expanded=True):
+            all_req_subjects = st.session_state.requirements.get('필수과목', [])
+            for subject in all_req_subjects:
+                is_passed = subject.strip().lower() in passed_subjects_set
+                st.checkbox(subject, value=is_passed, disabled=True, key=f"req_{subject}")
+
+        # 3-2. 공통 기초 필수
+        with st.expander("공통 기초 필수 (카테고리별 1개)", expanded=True):
+            for category, course_list in COMMON_FOUNDATIONAL_COURSES.items():
+                is_completed = any(course.strip().lower() in passed_subjects_set for course in course_list)
+                st.checkbox(category, value=is_completed, disabled=True, key=f"comm_{category}")
+
+        # 3-3. 영역별 1선택 교양
+        with st.expander("영역별 1선택 교양 (영역별 1개)", expanded=True):
+            for area, course_list in AREA_ELECTIVE_COURSES.items():
+                is_completed = any(course.strip().lower() in passed_subjects_set for course in course_list)
+                st.checkbox(area, value=is_completed, disabled=True, key=f"area_{area}")
+
+    with req_col2:  # 오른쪽 컬럼
+        # 3-4. 구분별 평점 (시각화)
+        st.subheader("구분별 평점 (전공, 교양)")
+        if not gpa_group.empty:
+            # 바 차트(bar_chart)를 위해 '평균평점' 열만 선택
+            st.bar_chart(gpa_group['평균평점'])
+        else:
+            st.info("성적 데이터가 없습니다.")
+
+    st.divider()
+
+    # 4. 재수강 / 스펙 현황 (2개 컬럼 분리)
+    retake_col1, spec_col2 = st.columns(2)
+
+    with retake_col1:
+        st.subheader("🚨 재수강 대상 과목 (C+ 이하)")
+        st.dataframe(retake)  # Pandas DataFrame을 인터랙티브 테이블로 표시
+
+    with spec_col2:
+        st.subheader("🏆 스펙 현황")
+        if st.session_state.df_specs.empty:
+            st.info("입력된 스펙이 없습니다.")
+        else:
+            # 분류별로 그룹화하여 expander 내부에 표시
+            for category, group_df in st.session_state.df_specs.groupby('분류'):
+                with st.expander(f"[{category}] - {len(group_df)}개"):
+                    for _, row in group_df.iterrows():
+                        st.markdown(f"**{row['이름']}** ({row['시기']})")
+                        st.caption(f"{row['상세']}")
+
+
+elif page == 'GTM 트랙 분석':
+    st.title("🎯 GTM 트랙 분석")
+
+    # 1. 트랙 선택
+    selected_track = st.selectbox(
+        "분석할 GTM 트랙을 선택하세요:",
+        list(TRACK_COURSES.keys())  # 딕셔너리의 키(마케팅, 데이터분석, 핀테크)로 목록 생성
+    )
+
+    if selected_track:
+        # 2. 분석 함수 호출
+        passed_list, missing_list, gpa, credits, total = analyze_gtm_track(
+            st.session_state.df_grades, selected_track
+        )
+
+        st.header(f"--- [ {selected_track} ] 트랙 ---")
+
+        # 3. 분석 결과 (Metrics)
+        col1, col2, col3 = st.columns(3)
+        col1.metric(f"{selected_track} 트랙 평점", f"{gpa:.2f}")
+        col2.metric(f"{selected_track} 트랙 이수 학점", f"{credits} 학점")
+        col3.metric("이수 과목 수", f"{len(passed_list)} / {total} 개")
+
+        st.divider()
+
+        # 4. 이수 / 미이수 과목 (컬럼 분리)
+        list_col1, list_col2 = st.columns(2)
+
+        with list_col1:
+            st.subheader(f"✅ 이수한 트랙 과목 ({len(passed_list)})")
+            if not passed_list:
+                st.info("이수한 과목이 없습니다.")
+            else:
+                for item in passed_list:
+                    st.markdown(f"- {item}")  # 마크다운 리스트로 표시
+
+        with list_col2:
+            st.subheader(f"📚 미이수 트랙 과목 ({len(missing_list)})")
+            if not missing_list:
+                st.success("해당 트랙의 과목을 모두 이수했습니다!")
+            else:
+                for item in missing_list:
+                    st.markdown(f"- {item}")
+
+elif page == '데이터 관리 (수정/삭제)':
+    st.title("✏️ 데이터 관리 (수정/삭제)")
+
+    # 1. EPIC 점수 관리
+    st.header("EPIC 점수 관리")
+    col1, col2 = st.columns([1, 3])  # 1:3 비율로 컬럼 분할
+    with col1:
+        new_epic = st.number_input(
+            "현재 EPIC 점수",
+            min_value=0,
+            value=st.session_state.current_epic,
+            key="epic_input"
+        )
+    with col2:
+        st.write("")  # 줄 맞춤
+        st.write("")
+        if st.button("EPIC 점수 저장", key="save_epic"):
+            st.session_state.current_epic = new_epic
+            save_config(st.session_state.requirements, st.session_state.current_epic)
+            st.success("EPIC 점수가 저장되었습니다!")
+
+    st.divider()
+
+    # 2. 성적 데이터 수정/삭제 (st.data_editor 활용)
+    st.header("성적 데이터 수정/삭제")
+    st.info("테이블을 엑셀처럼 직접 수정하거나, 행 왼쪽의 체크박스를 선택 후 (Delete) 키를 눌러 삭제할 수 있습니다.")
+
+    # st.data_editor: 엑셀과 유사한 편집 가능한 테이블을 만듭니다.
+    edited_df_grades = st.data_editor(
+        st.session_state.df_grades,
+        num_rows="dynamic",  # 행 추가/삭제 가능
+        key="grade_editor"
+    )
+
+    # '성적 변경사항 저장' 버튼
+    if st.button("성적 변경사항 저장", key="save_grades"):
+        st.session_state.df_grades = edited_df_grades  # 세션의 DataFrame을 교체
+        save_dataframe(st.session_state.df_grades, GRADE_FILE)  # 파일로 저장
+        st.success("성적 데이터가 파일에 저장되었습니다.")
+
+    st.divider()
+
+    # 3. 스펙 데이터 수정/삭제 (st.data_editor 활용)
+    st.header("스펙 데이터 수정/삭제")
+
+    edited_df_specs = st.data_editor(
+        st.session_state.df_specs,
+        num_rows="dynamic",  # 행 추가/삭제 가능
+        key="spec_editor"
+    )
+
+    if st.button("스펙 변경사항 저장", key="save_specs"):
+        st.session_state.df_specs = edited_df_specs
+        save_dataframe(st.session_state.df_specs, SPEC_FILE)
+        st.success("스펙 데이터가 파일에 저장되었습니다.")
+

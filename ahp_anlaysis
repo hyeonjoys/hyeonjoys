@@ -58,9 +58,9 @@ for idx, row in df.iterrows():
         else:
             cr_failed += 1
 
-print(f"✅ 총 응답자 중 포맷 통과: {len(valid_matrices) + cr_failed}명")
-print(f"❌ 논리적 모순(CR 초과)으로 탈락: {cr_failed}명")
-print(f"🏆 최종 정제된 최정예 데이터: {len(valid_matrices)}명\n")
+print(f" 총 응답자 중 포맷 통과: {len(valid_matrices) + cr_failed}명")
+print(f" 논리적 모순(CR 초과)으로 탈락: {cr_failed}명")
+print(f" 최종 정제된 최정예 데이터: {len(valid_matrices)}명\n")
 
 # 최정예 데이터 23명 기하평균 통합
 matrices = np.array(valid_matrices)

@@ -1,4 +1,4 @@
-## Hi there 👋
+## 이거어케하는거냐진짜로?
 
 <!--
 **hyeonjoys/hyeonjoys** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
